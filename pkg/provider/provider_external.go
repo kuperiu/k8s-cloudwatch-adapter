@@ -36,7 +36,23 @@ func (p *newRelicProvider) GetExternalMetric(namespace string, metricSelector la
 	if metricValue == 0 {
 		quantity = *resource.NewMilliQuantity(0, resource.DecimalSI)
 	} else {
-		quantity = *resource.NewQuantity(int64(aws.Float64Value(&metricValue)), resource.DecimalSI)
+		if IsNaturalNumber(metricValue) {
+			// If it is a whole number value, we can ignore the fractional part.
+			quantity = *resource.NewQuantity(int64(aws.Float64Value(&metricValue)), resource.DecimalSI)
+		} else {
+			// It expresses the metric value from type float64 as quantity milli unit.
+			// E. g. 0.918 is equivalent to the expression 918m, which can be read
+			// as "nine hundred eighteen milli".
+			// It guarantees that the metric value's fixed-point representation
+			// has the necessary accuracy.
+			// See Kuberentes Quantity specification: https://www.k8sref.io/docs/common-definitions/quantity-/
+			milli := metricValue * float64(1000)
+
+			// convert the value type to int64
+			milliMetricValue := int64(aws.Float64Value(&milli))
+
+			quantity = *resource.NewMilliQuantity(milliMetricValue, resource.DecimalSI)
+		}
 	}
 	externalmetric := external_metrics.ExternalMetricValue{
 		MetricName: info.Metric,
@@ -68,4 +84,8 @@ func (p *newRelicProvider) ListAllExternalMetrics() []provider.ExternalMetricInf
 		}
 	}
 	return externalMetricsInfo
+}
+
+func IsNaturalNumber(n float64) bool {
+  return n == float64(int64(n));
 }
